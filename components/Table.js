@@ -1,52 +1,142 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import Modal from 'react-modal';
+import { TableContext } from "../context/TableContext";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 
 
 const Table = () => {
     const [data, setData] = useState([]);
     const [modalIsOpen, setModalIsOpen] = useState(false);
-    const [formValues, setFormValues] = useState({
-        info1: '',
-        info2: '',
-        info3: '',
-        info4: '',
-        info5: '',
-        info6: '',
-        info7: '',
-        info8: '',
-    });
+    const [formValues, setFormValues] = useState({});
+    const [codigosPostales, setCodigosPostales] = useState([]);
     const [editMode, setEditMode] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [editedData, setEditedData] = useState({});
+    const { selectedTable } = useContext(TableContext);
 
-
-
-    const handleEdit = (item) => {
-        setEditedData(item);
-        setEditMode(true);
+    const getBaseUrl = () => {
+        return `http://localhost:4000/api/${selectedTable}`;
     };
+
+    const baseUrl = getBaseUrl();
+    const text = ""
+
+    useEffect(() => {
+        console.log(baseUrl)
+        fetch(getBaseUrl())
+            .then((response) => response.json())
+            .then((data) => {
+                setData(data);
+            })
+            .catch((error) => {
+                console.error("Error al obtener datos:", error);
+            });
+
+        fetch('http://localhost:4000/api/codigospostales/informacion')
+            .then((response) => response.json())
+            .then((data) => {
+                setCodigosPostales(data);
+            })
+            .catch((error) => {
+                console.error('Error al obtener códigos postales:', error);
+            });
+    }, [selectedTable]);
+
+    const columnNames = data.length > 0 ? Object.keys(data[0]) : [];
 
     const handleSave = () => {
-        const newData = data.map((item) => {
-            if (item.id === editedData.id) {
-                return editedData;
-            }
-            return item;
-        });
-        setData(newData);
-        setEditMode(false);
-        setEditedData({});
+        const baseUrl = getBaseUrl();
+
+        fetch(`${baseUrl}/${editedData.venta_id || editedData.dni || editedData.proveedor_id || editedData.id_producto || editedData.codigo_postal}`, {
+            method: 'PUT', // Utiliza el método PUT para actualizar el elemento
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(editedData),
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                // Muestra una notificación o mensaje de éxito si lo deseas
+                console.log(data);
+
+                // Actualiza el estado de "data" para reflejar los cambios en la tabla
+                setData((prevData) =>
+                    prevData.map((item) =>
+                        item.dni === editedData.dni ? { ...item, ...editedData } : item
+                    )
+                );
+
+                // Finaliza el modo de edición y limpia los datos editados
+                setEditMode(false);
+                setEditedData({});
+            })
+            .catch((error) => {
+                console.error('Error al actualizar el elemento:', error);
+            });
     };
 
+    const handleDelete = (item) => {
+        // Obtenemos la URL base de la API según la tabla seleccionada
+        const baseUrl = getBaseUrl();
+
+        // Obtenemos el ID del elemento a eliminar
+        const idToDelete = item?.venta_id || item?.dni || item?.proveedor_id || item?.id_producto || item?.codigo_postal;
+
+        // Realiza la solicitud DELETE al backend para eliminar el elemento
+        fetch(`${baseUrl}/${idToDelete}`, {
+            method: 'DELETE', // Utiliza el método DELETE para eliminar el elemento
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                // Actualiza el estado eliminando el elemento de la lista
+                setData((prevData) => prevData.filter((el) => el.id !== idToDelete));
+
+                // Si la eliminación fue exitosa y el elemento era un código postal, actualizamos los clientes
+                if (item?.codigo_postal && data.success) {
+                    updateClientesWithCodigoPostal(idToDelete);
+                }
+            })
+            .catch((error) => {
+                console.error('Ocurrió un error al eliminar el codigo postal, revise la tabla clientes y actualize los codigos postales de los clientes que esten utilizando el codigo postal el cual usted desea eliminar luego intentelo de nuevo, informacion mas detallada del erorr:', error);
+
+            });
+            window.location.reload()
+    };
+
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+
+
+        // Crea un objeto con los datos del formulario
+        const newElement = { ...formValues };
+
+        // Realiza la solicitud POST al backend
+        fetch(getBaseUrl(), {
+            method: 'POST', // Utiliza el método POST para agregar un nuevo elemento
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(newElement),
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                // Actualiza el estado con los datos devueltos por el backend
+                setData((prevData) => [...prevData, data]);
+
+                // Cierra el modal
+
+            })
+            .catch((error) => {
+                console.error('Error al agregar un nuevo elemento:', error);
+            });
+        window.location.reload();
+    };
     const handleCancel = () => {
         setEditMode(false);
         setEditedData({});
-    };
-
-
-    const handleDelete = (item) => {
-        const newData = data.filter((dataItem) => dataItem !== item);
-        setData(newData);
     };
 
     const handleAdd = () => {
@@ -57,46 +147,15 @@ const Table = () => {
         setModalIsOpen(false);
         setEditMode(false);
         setEditItem(null);
-        setFormValues({
-            info1: '',
-            info2: '',
-            info3: '',
-            info4: '',
-            info5: '',
-            info6: '',
-            info7: '',
-            info8: '',
-        });
+        setFormValues({});
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (editMode && editItem) {
-            const updatedData = data.map((item) => {
-                if (item === editItem) {
-                    return formValues;
-                }
-                return item;
-            });
-            setData(updatedData);
-            setEditMode(false);
-            setEditItem(null);
-        } else {
-            const newData = [...data, formValues];
-            setData(newData);
-        }
-        setFormValues({
-            info1: '',
-            info2: '',
-            info3: '',
-            info4: '',
-            info5: '',
-            info6: '',
-            info7: '',
-            info8: '',
-        });
-        closeModal();
+    const handleEdit = (item) => {
+        setEditItem(item); // Establecer el elemento seleccionado en el estado local
+        setEditedData({ ...item }); // Establecer los datos editados para el elemento seleccionado
+        setEditMode(true);
     };
+
 
     const handleInputChange = (e, key) => {
         const { name, value } = e.target;
@@ -110,10 +169,6 @@ const Table = () => {
         }
     };
 
-    const links =[
-        {},
-        {}
-    ]
     return (
         <div className="flex items-center justify-center mt-12">
             <main className="flex flex-col">
@@ -131,14 +186,11 @@ const Table = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-pink">
                         <tr className="bg-pink-500 text-white">
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 1</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 2</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 3</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 4</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 5</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 6</th>
-                            <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 7</th>
-                            {/* <th className="py-3 px-6 font-bold uppercase tracking-wider">Item 8</th> */}
+                            {columnNames.map((columnName, index) => (
+                                <th key={index} className="py-3 px-6 font-bold uppercase tracking-wider">
+                                    {columnName}
+                                </th>
+                            ))}
                             <th className="py-3 px-6 font-bold uppercase tracking-wider">Acciones</th>
                         </tr>
                     </thead>
@@ -146,118 +198,48 @@ const Table = () => {
                         {data.length > 0 ? (
                             data.map((item, index) => (
                                 <tr key={index}>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info1 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info1')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info1
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info2 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info2')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info2
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info3 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info3')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info3
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info4 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info4')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info4
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info5 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info5')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info5
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info6 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info6')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info6
-                                        )}
-                                    </td>
-                                    <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info7 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info7')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info7
-                                        )}
-                                    </td>
-                                    {/* <td className="py-4 px-6">
-                                        {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editedData.info8 || ''}
-                                                onChange={(e) => handleInputChange(e, 'info8')}
-                                                className="input-edit w-20"
-                                            />
-                                        ) : (
-                                            item.info8
-                                        )}
-                                    </td> */}
+                                    {columnNames.map((columnName, colIndex) => (
+                                        <td key={colIndex} className="py-4 px-6">
+                                            {editMode && editItem?.dni === item?.dni ? ( // Verifica si estamos en modo de edición y el dni coincide
+                                                <input
+                                                    type="text"
+                                                    value={editedData[columnName] || ''}
+                                                    onChange={(e) => handleInputChange(e, columnName)}
+                                                    className="input-edit w-20"
+                                                />
+                                            ) : (
+                                                item[columnName]
+                                            )}
+                                        </td>
+                                    ))}
                                     <td className="py-4 px-6 space-x-3">
-                                        {editMode ? (
+                                        {editMode && editItem && editItem.dni === item.dni ? (
                                             <>
-                                                <button className="btn-save bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded" onClick={handleSave}>
+                                                <button
+                                                    className="btn-save bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
+                                                    onClick={handleSave}
+                                                >
                                                     Listo
                                                 </button>
-                                                <button className="btn-cancel bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded" onClick={handleCancel}>
+                                                <button
+                                                    className="btn-cancel bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded"
+                                                    onClick={handleCancel}
+                                                >
                                                     Cancelar
                                                 </button>
                                             </>
                                         ) : (
                                             <>
-                                                <button className="btn-edit bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded" onClick={() => handleEdit(item)}>
+                                                <button
+                                                    className="btn-edit bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
+                                                    onClick={() => handleEdit(item)}
+                                                >
                                                     Editar
                                                 </button>
-                                                <button className="btn-delete bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded" onClick={() => handleDelete(item)}>
+                                                <button
+                                                    className="btn-delete bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded"
+                                                    onClick={() => handleDelete(item)}
+                                                >
                                                     Eliminar
                                                 </button>
                                             </>
@@ -267,14 +249,13 @@ const Table = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="9" className="py-4 px-6 text-center">
+                                <td colSpan={columnNames.length + 1} className="py-4 px-6 text-center">
                                     No hay datos disponibles
                                 </td>
                             </tr>
                         )}
                     </tbody>
                 </table>
-
 
                 {/* Modal */}
                 <Modal
@@ -287,94 +268,49 @@ const Table = () => {
                         <h2 className="text-xl font-bold mb-4">Añadir Información</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="info1" className="font-bold">Info 1:</label>
-                                    <input
-                                        type="text"
-                                        id="info1"
-                                        name="info1"
-                                        value={formValues.info1}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info2" className="font-bold">Info 2:</label>
-                                    <input
-                                        type="text"
-                                        id="info2"
-                                        name="info2"
-                                        value={formValues.info2}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info3" className="font-bold">Info 3:</label>
-                                    <input
-                                        type="text"
-                                        id="info3"
-                                        name="info3"
-                                        value={formValues.info3}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info4" className="font-bold">Info 4:</label>
-                                    <input
-                                        type="text"
-                                        id="info4"
-                                        name="info4"
-                                        value={formValues.info4}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info5" className="font-bold">Info 5:</label>
-                                    <input
-                                        type="text"
-                                        id="info5"
-                                        name="info5"
-                                        value={formValues.info5}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info6" className="font-bold">Info 6:</label>
-                                    <input
-                                        type="text"
-                                        id="info6"
-                                        name="info6"
-                                        value={formValues.info6}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="info7" className="font-bold">Info 7:</label>
-                                    <input
-                                        type="text"
-                                        id="info7"
-                                        name="info7"
-                                        value={formValues.info7}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div>
-                                {/* <div>
-                                    <label htmlFor="info8" className="font-bold">Info 8:</label>
-                                    <input
-                                        type="text"
-                                        id="info8"
-                                        name="info8"
-                                        value={formValues.info8}
-                                        onChange={handleInputChange}
-                                        className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
-                                    />
-                                </div> */}
+                                {columnNames.map((columnName, index) => {
+                                    // Omitir la generación del campo "Código Postal" dentro del .map
+                                    if (columnName === "codigo_postal" && baseUrl === "http://localhost:4000/api/clientes") {
+                                        return (
+                                            <div>
+                                                <label htmlFor="codigo_postal" className="font-bold">
+                                                    Código Postal:
+                                                </label>
+                                                <select
+                                                    id="codigo_postal"
+                                                    name="codigo_postal"
+                                                    value={formValues.codigo_postal || ''}
+                                                    onChange={handleInputChange}
+                                                    className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="">Seleccionar Código Postal</option>
+                                                    {codigosPostales.map((codigoPostal) => (
+                                                        <option key={codigoPostal.codigo_postal} value={codigoPostal.codigo_postal}>
+                                                            {codigoPostal.codigo_postal}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )
+                                    }
+
+                                    return (
+                                        <div key={index}>
+                                            <label htmlFor={columnName} className="font-bold">
+                                                {columnName}:
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id={columnName}
+                                                name={columnName}
+                                                value={formValues[columnName] || ''}
+                                                onChange={handleInputChange}
+                                                className="border border-gray-300 rounded-md px-4 py-2 w-full focus:outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                    );
+                                })}
+                                {/* Mostrar el campo "Código Postal" por separado fuera del .map */}
                             </div>
                             <div className="flex justify-center space-x-3">
                                 <button
@@ -394,9 +330,10 @@ const Table = () => {
                         </form>
                     </div>
                 </Modal>
+                <ToastContainer/>
             </main>
         </div>
-    )
-}
+    );
+};
 
 export default Table;
